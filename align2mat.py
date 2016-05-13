@@ -39,6 +39,27 @@ for file in FILE_NAMES:
 
 	# Parse file
 	line_index = 0
+	on_block = False # Are we reading a block ?
 	while(line_index < len(lines)):
-		# Go to next line
-		line_index +=1
+		line = lines[line_index]
+		splitted_line = line.split()
+
+		# If we are not already in an alignment block
+		if not on_block :
+			# If we are on the first line of a block
+			if len(splitted_line) > 0 and splitted_line[0] == "cDNA":
+				# Go to first allele
+				line_index +=3
+				on_block = True # We start reading a block
+			else:
+				# Go to next line
+				line_index +=1
+		else :
+			# If we reach the end of a block
+			if len(splitted_line) == 0:
+				on_block = False
+			else :
+				# We are on a line of the alignment
+				# Process
+				1
+			line_index += 1
