@@ -37,6 +37,11 @@ for file in FILE_NAMES:
 	file_data = open(file)
 	lines = file_data.readlines()[6:]
 
+	# Parsing dictionary
+	# Key = Sequence name
+	# Value = Sequence
+	seq_dict = dict()
+
 	# Parse file
 	line_index = 0
 	on_block = False # Are we reading a block ?
@@ -60,6 +65,12 @@ for file in FILE_NAMES:
 				on_block = False
 			else :
 				# We are on a line of the alignment
-				# Process
-				1
+				allele_name = splitted_line[0]
+				allele_seq = ''.join(splitted_line[1:]).replace('|', '')
+				# If allele already in dictionary, add seq
+				if allele_name in seq_dict.keys():
+					seq_dict[allele_name] += allele_seq
+				# Otherwise, create entry
+				else :
+					seq_dict[allele_name] = allele_seq
 			line_index += 1
