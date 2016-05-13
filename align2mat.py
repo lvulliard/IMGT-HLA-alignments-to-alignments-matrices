@@ -6,7 +6,18 @@ import sys
 
 
 ################################## Functions ##################################
+def locations_of_substring(string, substring):
+    """Return a list of locations of a substring."""
 
+    substring_length = len(substring)    
+    def recurse(locations_found, start):
+        location = string.find(substring, start)
+        if location != -1:
+            return recurse(locations_found + [location], location+substring_length)
+        else:
+            return locations_found
+
+    return recurse([], 0)
 
 ##################################### Main ####################################
 
@@ -18,5 +29,16 @@ else :
 
 # Put alignment files names in an array (names should not include spaces)
 LIST_FILE_DATA = open(LIST_FILE)
-FILE_NAMES = LIST_FILE_DATA.readlines()
-FILE_NAMES = [name.split() for name in FILE_NAMES]
+FILE_NAMES = (name.split()[0] for name in LIST_FILE_DATA.readlines())
+
+# Loop on every file to process
+for file in FILE_NAMES:
+	# Read file, skipping header
+	file_data = open(file)
+	lines = file_data.readlines()[6:]
+
+	# Parse file
+	line_index = 0
+	while(line_index < len(lines)):
+		# Go to next line
+		line_index +=1
