@@ -14,3 +14,6 @@ spaces.
 ############################################################
 CHANGELOG -
 v0.1 - Initial comit, the <source> file is read.
+v0.2 - Alignment files are read and sequences are cured of
+indels and positions with undetermined bases for some
+sequences
