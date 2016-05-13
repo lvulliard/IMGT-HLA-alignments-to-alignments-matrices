@@ -33,6 +33,8 @@ FILE_NAMES = (name.split()[0] for name in LIST_FILE_DATA.readlines())
 
 # Loop on every file to process
 for file in FILE_NAMES:
+	print "Processing "+file
+
 	# Read file, skipping header
 	file_data = open(file)
 	lines = file_data.readlines()[6:]
@@ -53,8 +55,11 @@ for file in FILE_NAMES:
 		if not on_block :
 			# If we are on the first line of a block
 			if len(splitted_line) > 0 and splitted_line[0] == "cDNA":
-				# Go to first allele
-				line_index +=3
+				# Go to first allele, either 2 or 3 lines down, depening on file.
+				if len(lines[line_index +2].split()) > 1:
+					line_index +=2
+				else :
+					line_index +=3
 				on_block = True # We start reading a block
 			else:
 				# Go to next line
@@ -74,3 +79,24 @@ for file in FILE_NAMES:
 				else :
 					seq_dict[allele_name] = allele_seq
 			line_index += 1
+
+	# Data curation
+	# We remove positions with unknown nucleotide for a sequence
+	# We also remove indels
+
+	# List of positions kept, 1-based indices
+	pos_list = range(1, len(seq_dict.values()[0])+1)
+
+	# Parse file
+	line_index = 0
+	on_block = False # Are we reading a block ?
+	for seq in seq_dict.values():
+		# If * character in a position kept at this stage
+		# It corresponds to an undetermined base in the sequence
+		if ''.join([seq[i-1] for i in pos_list]).count('*') > 0 :
+			# We remove the corresponding positions from the list
+			pos_list = list(set(pos_list) - set([i+1 for i in locations_of_substring(seq, '*')]))
+		# We do the same for the . character
+		# It corresponds to an indel compared to the reference sequence
+		if ''.join([seq[i-1] for i in pos_list]).count('.') > 0 :
+			pos_list = list(set(pos_list) - set([i+1 for i in locations_of_substring(seq, '.')]))
