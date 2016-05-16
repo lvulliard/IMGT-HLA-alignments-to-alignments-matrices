@@ -2,7 +2,7 @@
 
 ################################### Imports ###################################
 import numpy as np
-import sys
+import sys, pickle
 
 
 ################################## Functions ##################################
@@ -43,6 +43,8 @@ for file in FILE_NAMES:
 	# Key = Sequence name
 	# Value = Sequence
 	seq_dict = dict()
+	# Reference sequence
+	ref_seq = []
 
 	# Parse file
 	line_index = 0
@@ -78,7 +80,13 @@ for file in FILE_NAMES:
 				# Otherwise, create entry
 				else :
 					seq_dict[allele_name] = allele_seq
+					# We then check if it is the first sequence of the file,
+					# hence the reference sequence
+					if len(ref_seq) == 0:
+						ref_seq.append(allele_name)
 			line_index += 1
+
+	print "Reference sequence for "+ file +" is "+ref_seq[0]
 
 	# Data curation
 	# We remove positions with unknown nucleotide for a sequence
@@ -100,3 +108,33 @@ for file in FILE_NAMES:
 		# It corresponds to an indel compared to the reference sequence
 		if ''.join([seq[i-1] for i in pos_list]).count('.') > 0 :
 			pos_list = list(set(pos_list) - set([i+1 for i in locations_of_substring(seq, '.')]))
+	
+	
+	# if file == "alignments/V_nuc.txt":
+	# 	for seq in seq_dict.values():
+	# 		print ''.join([seq[i-1] for i in pos_list])
+
+	# Create alignment matrix
+	align_matrix = np.empty([len(seq_dict.values()), len(pos_list)])
+	# Order in which sequences are reported in the matrix
+	ordered_seq_list = []
+	
+	# Start at first line of the matrix
+	i = 0
+	for allele_name, allele_seq in seq_dict.iteritems():
+		ordered_seq_list.append(allele_name)
+		if allele_name != ref_seq[0]:
+			for j in xrange(len(pos_list)):
+				if allele_seq[pos_list[j]-1] == "-":
+					align_matrix[i][j] = 0
+				else:
+					align_matrix[i][j] = 1
+		else:
+			align_matrix[i] = [0]*len(pos_list)
+		i += 1
+
+	pickle.dump(align_matrix, open(file+".mat",'wb'))
+	order_file = open(file+'.ord', 'w')
+	order_file.write(" ".join(ordered_seq_list))
+	order_file.close()
+	file_data.close()
