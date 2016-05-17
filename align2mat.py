@@ -23,7 +23,7 @@ def locations_of_substring(string, substring):
 
 # Import list of alignment file to process
 if len(sys.argv) >= 2 : # List of files file name as an argument
-	LIST_FILE = int(sys.argv[1])
+	LIST_FILE = sys.argv[1].split()[0]
 else :
 	LIST_FILE = "alignments_file_list.txt"
 
@@ -133,8 +133,14 @@ for file in FILE_NAMES:
 			align_matrix[i] = [0]*len(pos_list)
 		i += 1
 
+	# Write a pickle file including the computed matrix
 	pickle.dump(align_matrix, open(file+".mat",'wb'))
+	# Write files including the order of the sequences in the matrix
+	# And the positions kept, 1-based indices, based on the reference sequence
 	order_file = open(file+'.ord', 'w')
 	order_file.write(" ".join(ordered_seq_list))
 	order_file.close()
+	pos_file = open(file+'.pos', 'w')
+	pos_file.write(" ".join([str(i) for i in pos_list]))
+	pos_file.close()
 	file_data.close()
