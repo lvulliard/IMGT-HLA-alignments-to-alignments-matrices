@@ -21,9 +21,19 @@ def locations_of_substring(string, substring):
 
 ##################################### Main ####################################
 
+# Correspondances between nucleotides and character
+nt_to_char = {"A" : 0, "T" : 1, "C" : 2, "G" : 3}
+
 # Import list of alignment file to process
 if len(sys.argv) >= 2 : # List of files file name as an argument
 	LIST_FILE = sys.argv[1].split()[0]
+	if len(sys.argv) >= 3 : # Matrices type specified
+		# 0 : matrices contain 0, 1, 2 or 3 for A, T, C and G
+		# 1 : matrices contain 0 or 1 for identical to the reference sequence
+		# or mutated from the reference
+		MAT_TYPE = int(len(sys.argv[2]))
+	else :
+		MAT_TYPE = 0
 else :
 	LIST_FILE = "alignments_file_list.txt"
 
@@ -109,11 +119,6 @@ for file in FILE_NAMES:
 		if ''.join([seq[i-1] for i in pos_list]).count('.') > 0 :
 			pos_list = list(set(pos_list) - set([i+1 for i in locations_of_substring(seq, '.')]))
 	
-	
-	# if file == "alignments/V_nuc.txt":
-	# 	for seq in seq_dict.values():
-	# 		print ''.join([seq[i-1] for i in pos_list])
-
 	# Create alignment matrix
 	align_matrix = np.empty([len(seq_dict.values()), len(pos_list)])
 	# Order in which sequences are reported in the matrix
@@ -121,17 +126,34 @@ for file in FILE_NAMES:
 	
 	# Start at first line of the matrix
 	i = 0
-	for allele_name, allele_seq in seq_dict.iteritems():
-		ordered_seq_list.append(allele_name)
-		if allele_name != ref_seq[0]:
-			for j in xrange(len(pos_list)):
-				if allele_seq[pos_list[j]-1] == "-":
-					align_matrix[i][j] = 0
-				else:
-					align_matrix[i][j] = 1
-		else:
-			align_matrix[i] = [0]*len(pos_list)
-		i += 1
+	if MAT_TYPE == 1 : # Fill matrix with 0 or 1
+		for allele_name, allele_seq in seq_dict.iteritems():
+			ordered_seq_list.append(allele_name)
+			if allele_name != ref_seq[0]:
+				for j in xrange(len(pos_list)):
+					if allele_seq[pos_list[j]-1] == "-":
+						align_matrix[i][j] = 0
+					else:
+						align_matrix[i][j] = 1
+			else:
+				align_matrix[i] = [0]*len(pos_list)
+			i += 1
+
+	if MAT_TYPE == 0 : # Fill matrix with 0, 1, 2 or 3
+		for allele_name, allele_seq in seq_dict.iteritems():
+			ordered_seq_list.append(allele_name)
+			if allele_name != ref_seq[0]:
+				for j in xrange(len(pos_list)):
+					if allele_seq[pos_list[j]-1] == "-":
+						align_matrix[i][j] = nt_to_char[ seq_dict[ref_seq[0]][pos_list[j]-1] ]
+					else:
+						align_matrix[i][j] = nt_to_char[ allele_seq[pos_list[j]-1] ]
+			else:
+				align_matrix[i] = [nt_to_char[allele_seq[pos_list[k]-1]] for k in xrange(len(pos_list))]
+			i += 1
+	
+	else :
+		print("Unknown matrix type.")
 
 	# Write a pickle file including the computed matrix
 	pickle.dump(align_matrix, open(file+".mat",'wb'))
@@ -144,3 +166,4 @@ for file in FILE_NAMES:
 	pos_file.write(" ".join([str(i) for i in pos_list]))
 	pos_file.close()
 	file_data.close()
+LIST_FILE_DATA.close()
