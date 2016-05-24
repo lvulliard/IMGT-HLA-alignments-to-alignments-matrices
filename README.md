@@ -39,3 +39,5 @@ in plain text files, respectively with a .ord and .pos
 suffixes.
 v0.4 - Now the alignment matrix can be encoded as
 nucleotides and not only as differences to the reference.
+v0.5 - Positions are now corrected to take into account
+deletions in the reference genome

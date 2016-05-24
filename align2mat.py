@@ -54,7 +54,7 @@ for file in FILE_NAMES:
 	# Value = Sequence
 	seq_dict = dict()
 	# Reference sequence
-	ref_seq = []
+	name_of_ref_seq_in_list = []
 
 	# Parse file
 	line_index = 0
@@ -92,11 +92,11 @@ for file in FILE_NAMES:
 					seq_dict[allele_name] = allele_seq
 					# We then check if it is the first sequence of the file,
 					# hence the reference sequence
-					if len(ref_seq) == 0:
-						ref_seq.append(allele_name)
+					if len(name_of_ref_seq_in_list) == 0:
+						name_of_ref_seq_in_list.append(allele_name)
 			line_index += 1
 
-	print "Reference sequence for "+ file +" is "+ref_seq[0]
+	print "Reference sequence for "+ file +" is "+name_of_ref_seq_in_list[0]
 
 	# Data curation
 	# We remove positions with unknown nucleotide for a sequence
@@ -129,7 +129,7 @@ for file in FILE_NAMES:
 	if MAT_TYPE == 1 : # Fill matrix with 0 or 1
 		for allele_name, allele_seq in seq_dict.iteritems():
 			ordered_seq_list.append(allele_name)
-			if allele_name != ref_seq[0]:
+			if allele_name != name_of_ref_seq_in_list[0]:
 				for j in xrange(len(pos_list)):
 					if allele_seq[pos_list[j]-1] == "-":
 						align_matrix[i][j] = 0
@@ -142,10 +142,10 @@ for file in FILE_NAMES:
 	if MAT_TYPE == 0 : # Fill matrix with 0, 1, 2 or 3
 		for allele_name, allele_seq in seq_dict.iteritems():
 			ordered_seq_list.append(allele_name)
-			if allele_name != ref_seq[0]:
+			if allele_name != name_of_ref_seq_in_list[0]:
 				for j in xrange(len(pos_list)):
 					if allele_seq[pos_list[j]-1] == "-":
-						align_matrix[i][j] = nt_to_char[ seq_dict[ref_seq[0]][pos_list[j]-1] ]
+						align_matrix[i][j] = nt_to_char[ seq_dict[name_of_ref_seq_in_list[0]][pos_list[j]-1] ]
 					else:
 						align_matrix[i][j] = nt_to_char[ allele_seq[pos_list[j]-1] ]
 			else:
@@ -155,6 +155,33 @@ for file in FILE_NAMES:
 	else :
 		print("Unknown matrix type.")
 
+	# The positions we kept are refering to positions in the alignment and not
+	# positions in the reference sequence. The reference sequence can indeed
+	# include deletions compared to other sequences. We need to modify the
+	# positions list to take this fact into account.
+
+	# List of positions on which a shift occurs.
+	# NB : the indices correspond to the number of shifts at this asociated
+	# position
+	shifts = [0]
+
+	# Find the positions of those shifts
+	ref_seq = seq_dict[name_of_ref_seq_in_list[0]]
+	for i in xrange(len(seq_dict.values()[0])):
+		if ref_seq[i] == "*" or ref_seq[i] == ".":
+			shifts.append(i)
+
+	# i is the index for parsing the shifts list
+	i = len(shifts)-1
+	corrected_pos_list = []
+	# We parse the position list in reverse order
+	# In order to have the biggest numbers first
+	for j in reversed(xrange(len(pos_list))):
+		while pos_list[j] < shifts[i]:
+			i -= 1
+		corrected_pos_list.append(pos_list[j] - i)
+	pos_list = reversed(corrected_pos_list)
+
 	# Write a pickle file including the computed matrix
 	pickle.dump(align_matrix, open(file+".mat",'wb'))
 	# Write files including the order of the sequences in the matrix
@@ -162,6 +189,9 @@ for file in FILE_NAMES:
 	order_file = open(file+'.ord', 'w')
 	order_file.write(" ".join(ordered_seq_list))
 	order_file.close()
+
+
+
 	pos_file = open(file+'.pos', 'w')
 	pos_file.write(" ".join([str(i) for i in pos_list]))
 	pos_file.close()
