@@ -1,6 +1,26 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+##################################### Help ####################################
+"""Convert IMGT-HLA alignments to alignment matrices.
+
+Usage:
+  align2mat.py [options]
+  align2mat.py --help
+  align2mat.py --version
+
+Options:
+  -l <path>, --list <path>    Path to a list of files to process. [default: alignments_files_list.txt]         
+  -m --matrix                 Get 0/1 alignment matrices instead of 0/1/2/3 matrices.
+  -c <GRCh>, --coord <GRCh>   Specify output coordinates system. [default: 0]
+  -a --addchecks              Perform additional checks on coordinates change. Only apply when -c is specified.
+  -h --help                   Show this screen.
+  -v --version                Show version.
+
+"""
+
 
 ################################### Imports ###################################
+from docopt import docopt
 import numpy as np
 import sys, pickle
 
@@ -24,28 +44,16 @@ def locations_of_substring(string, substring):
 # Correspondances between nucleotides and character
 nt_to_char = {"A" : 0, "T" : 1, "C" : 2, "G" : 3}
 
-# Import list of alignment file to process
-if len(sys.argv) >= 2 : # List of files file name as an argument
-	LIST_FILE = sys.argv[1].split()[0]
-	if len(sys.argv) >= 3 : # Matrices type specified
-		# 0 : matrices contain 0, 1, 2 or 3 for A, T, C and G
-		# 1 : matrices contain 0 or 1 for identical to the reference sequence
-		# or mutated from the reference
-		MAT_TYPE = int(sys.argv[2])
-		if len(sys.argv) >= 4 : # Coordinates type specified
-		# 0 : keep coordinates of the reference allele
-		# N : use coordinates of GRChN (for N positive)
-			COORD_SYST = int(sys.argv[3])
-			if len(sys.argv) >= 5 : # Additional checks specified
-				ADD_CHECKS = bool(int(sys.argv[4]))
-			else :
-				ADD_CHECKS = 0
-		else :
-			COORD_SYST = 0
-	else :
-		MAT_TYPE = 0
-else :
-	LIST_FILE = "alignments_file_list.txt"
+# Import user input
+arguments = docopt(__doc__, version='v0.6')
+LIST_FILE = arguments["--list"] # List of files file name
+MAT_TYPE = arguments["--matrix"] # Matrices type
+# FALSE : matrices contain 0, 1, 2 or 3 for A, T, C and G
+# TRUE : matrices contain 0 or 1 for identical to the reference sequence
+COORD_SYST = int(arguments["--coord"]) # Coordinates type
+# 0 : keep coordinates of the reference allele
+# N : use coordinates of GRChN (for N positive)
+ADD_CHECKS = arguments["--addchecks"] # Additional checks needed
 
 # Put alignment files names in an array (names should not include spaces)
 LIST_FILE_DATA = open(LIST_FILE)
@@ -145,7 +153,7 @@ for file in FILE_NAMES:
 	
 	# Start at first line of the matrix
 	i = 0
-	if MAT_TYPE == 1 : # Fill matrix with 0 or 1
+	if MAT_TYPE : # Fill matrix with 0 or 1
 		for allele_name, allele_seq in seq_dict.iteritems():
 			ordered_seq_list.append(allele_name)
 			if allele_name != name_of_ref_seq_in_list[0]:
@@ -158,7 +166,7 @@ for file in FILE_NAMES:
 				align_matrix[i] = [0]*len(pos_list)
 			i += 1
 
-	elif MAT_TYPE == 0 : # Fill matrix with 0, 1, 2 or 3
+	else: # Fill matrix with 0, 1, 2 or 3
 		for allele_name, allele_seq in seq_dict.iteritems():
 			ordered_seq_list.append(allele_name)
 			if allele_name != name_of_ref_seq_in_list[0]:
@@ -170,9 +178,7 @@ for file in FILE_NAMES:
 			else:
 				align_matrix[i] = [nt_to_char[allele_seq[pos_list[k]-1]] for k in xrange(len(pos_list))]
 			i += 1
-	
-	else :
-		print("Unknown matrix type.")
+
 
 	# The positions we kept are refering to positions in the alignment and not
 	# positions in the reference sequence. The reference sequence can indeed

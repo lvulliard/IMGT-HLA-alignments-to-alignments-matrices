@@ -1,6 +1,22 @@
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+##################################### Help ####################################
+"""Convert IMGT-HLA alignments to alignment matrices.
+
+Usage:
+  align2mat.py [-l <path>]
+  align2mat.py --help
+  align2mat.py --version
+
+Options:
+  -l <path>, --list <path>    Path to a list of files to process. [default: alignments_files_list.txt]         
+  -h --help                   Show this screen.
+  -v --version                Show version.
+
+"""
 
 ################################### Imports ###################################
+from docopt import docopt
 import numpy as np
 import sys, pickle
 
@@ -9,11 +25,9 @@ import sys, pickle
 
 ##################################### Main ####################################
 
-# Import list of alignment file to process
-if len(sys.argv) >= 2 : # List of files file name as an argument
-	LIST_FILE = sys.argv[1].split()[0]
-else :
-	LIST_FILE = "alignments_file_list.txt"
+# Import user input
+arguments = docopt(__doc__, version='v0.6')
+LIST_FILE = arguments["--list"] # List of files file name
 
 # Put alignment files names in an array (names should not include spaces)
 LIST_FILE_DATA = open(LIST_FILE)
