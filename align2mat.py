@@ -12,6 +12,7 @@ Options:
   -l <path>, --list <path>    Path to a list of files to process. [default: alignments_files_list.txt]         
   -m --matrix                 Get 0/1 alignment matrices instead of 0/1/2/3 matrices.
   -c <GRCh>, --coord <GRCh>   Specify output coordinates system. [default: 0]
+  -f --filter
   -a --addchecks              Perform additional checks on coordinates change. Only apply when -c is specified.
   -h --help                   Show this screen.
   -v --version                Show version.
@@ -54,6 +55,7 @@ COORD_SYST = int(arguments["--coord"]) # Coordinates type
 # 0 : keep coordinates of the reference allele
 # N : use coordinates of GRChN (for N positive)
 ADD_CHECKS = arguments["--addchecks"] # Additional checks needed
+FILTER = arguments["--filter"]
 
 # Put alignment files names in an array (names should not include spaces)
 LIST_FILE_DATA = open(LIST_FILE)
@@ -105,22 +107,24 @@ for file in FILE_NAMES:
 			else :
 				# We are on a line of the alignment
 				allele_name = splitted_line[0]
-				# If we are parsing the reference allele and we want final positions
-				# using GRCh coordinates with additional checks
-				if ADD_CHECKS and (COORD_SYST != 0) and (len(name_of_ref_seq_in_list) == 0 or allele_name in name_of_ref_seq_in_list):
-					# We need to keep the position of pipes
-					ref_full_seq  += ''.join(splitted_line[1:])
-				allele_seq = ''.join(splitted_line[1:]).replace('|', '')
-				# If allele already in dictionary, add seq
-				if allele_name in seq_dict.keys():
-					seq_dict[allele_name] += allele_seq
-				# Otherwise, create entry
-				else :
-					seq_dict[allele_name] = allele_seq
-					# We then check if it is the first sequence of the file,
-					# hence the reference sequence
-					if len(name_of_ref_seq_in_list) == 0:
-						name_of_ref_seq_in_list.append(allele_name)
+				# Skip null alleles
+				if not FILTER or allele_name[-1] != "N":
+					# If we are parsing the reference allele and we want final positions
+					# using GRCh coordinates with additional checks
+					if ADD_CHECKS and (COORD_SYST != 0) and (len(name_of_ref_seq_in_list) == 0 or allele_name in name_of_ref_seq_in_list):
+						# We need to keep the position of pipes
+						ref_full_seq  += ''.join(splitted_line[1:])
+					allele_seq = ''.join(splitted_line[1:]).replace('|', '')
+					# If allele already in dictionary, add seq
+					if allele_name in seq_dict.keys():
+						seq_dict[allele_name] += allele_seq
+					# Otherwise, create entry
+					else :
+						seq_dict[allele_name] = allele_seq
+						# We then check if it is the first sequence of the file,
+						# hence the reference sequence
+						if len(name_of_ref_seq_in_list) == 0:
+							name_of_ref_seq_in_list.append(allele_name)
 			line_index += 1
 
 	print "Reference sequence for "+ file +" is "+name_of_ref_seq_in_list[0]
