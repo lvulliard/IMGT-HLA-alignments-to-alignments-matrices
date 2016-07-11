@@ -4,9 +4,8 @@
 This script aims to convert alignment files, as available
 on IMGT-HLA repository 
 (ftp://ftp.ebi.ac.uk/pub/databases/ipd/imgt/hla/alignments/)
-to alignment matrices (either 0 encoding a similarity to the
-reference allele and 1 a difference or 0, 1, 2 and 3
-encoding respectively A, T, C and G).
+to alignment matrices (0, 1, 2 and 3 encoding respectively 
+A, T, C and G).
 Then, a distance matrix can be computed, by summing the
 pairwise differences in the alignment matrix.
 ############################################################
@@ -68,3 +67,6 @@ nucleotides and not only as differences to the reference.
 v0.5 - Positions are now corrected to take into account
 deletions in the reference genome
 v0.6 - Improved how user inputs script options
+v1.0 - Management of indels
+v1.1 - 0/1 matrices type removed and indels coding bug
+fixes. Cleared display.
