@@ -22,6 +22,7 @@ Options:
 
 ################################### Imports ###################################
 from docopt import docopt
+from collections import defaultdict
 import numpy as np
 import sys, pickle
 
@@ -40,6 +41,27 @@ def locations_of_substring(string, substring):
 
     return recurse([], 0)
 
+
+################################### Classes ###################################
+class Stretch:
+	"""Explicit constructor"""
+	def __init__(self, stretch_type, start):
+		self.type_insertion = stretch_type
+		self.start = start
+		self.end = start
+
+	def __str__(self):
+		if self.type_insertion:
+			return("INS: "+str(self.start)+" - "+str(self.end))
+		else:
+			return("DEL: "+str(self.start)+" - "+str(self.end))
+
+	def pos(self):
+		return(range(self.start, self.end+1))
+
+
+np.set_printoptions(edgeitems=60)
+
 ##################################### Main ####################################
 
 # Correspondances between nucleotides and character
@@ -53,16 +75,26 @@ MAT_TYPE = arguments["--matrix"] # Matrices type
 # TRUE : matrices contain 0 or 1 for identical to the reference sequence
 COORD_SYST = int(arguments["--coord"]) # Coordinates type
 # 0 : keep coordinates of the reference allele
-# N : use coordinates of GRChN (for N positive)
-ADD_CHECKS = arguments["--addchecks"] # Additional checks needed
+# N : use coordinates of GRChN
+if COORD_SYST != 0:
+	ADD_CHECKS = arguments["--addchecks"] # Additional checks needed
+else:
+	ADD_CHECKS = False
 FILTER = arguments["--filter"]
 
 # Put alignment files names in an array (names should not include spaces)
 LIST_FILE_DATA = open(LIST_FILE)
-FILE_NAMES = (name.split()[0] for name in LIST_FILE_DATA.readlines())
+FILE_NAMES = [name.split()[0] for name in LIST_FILE_DATA.readlines()]
+
+# If additional checks needed, put reference sequence in an array
+LIST_REF = [None]*len(FILE_NAMES)
+if ADD_CHECKS:
+	LIST_REF_FILE = open(LIST_FILE+".ref"+str(COORD_SYST), "r")
+	LIST_REF = [i.split()[0] for i in LIST_REF_FILE.readlines()]
+	LIST_REF_FILE.close()
 
 # Loop on every file to process
-for file in FILE_NAMES:
+for file, genome_ref_seq in zip(FILE_NAMES, LIST_REF):
 	print "Processing "+file
 
 	# Read file, skipping header
@@ -74,15 +106,15 @@ for file in FILE_NAMES:
 	# Value = Sequence
 	seq_dict = dict()
 	# Reference sequence
-	name_of_ref_seq_in_list = []
+	alignment_ref_seq = []
 
 	# Parse file
 	line_index = 0
 	on_block = False # Are we reading a block ?
 	
 	# Used for additional checks
-	ref_full_seq = ''
-
+	aln_ref_full_seq = ''
+		
 	while(line_index < len(lines)):
 		line = lines[line_index]
 		splitted_line = line.split()
@@ -111,9 +143,10 @@ for file in FILE_NAMES:
 				if not FILTER or allele_name[-1] != "N":
 					# If we are parsing the reference allele and we want final positions
 					# using GRCh coordinates with additional checks
-					if ADD_CHECKS and (COORD_SYST != 0) and (len(name_of_ref_seq_in_list) == 0 or allele_name in name_of_ref_seq_in_list):
+					if ADD_CHECKS and (len(alignment_ref_seq) == 0 or allele_name in alignment_ref_seq):
 						# We need to keep the position of pipes
-						ref_full_seq  += ''.join(splitted_line[1:])
+						aln_ref_full_seq += ''.join(splitted_line[1:])
+					
 					allele_seq = ''.join(splitted_line[1:]).replace('|', '')
 					# If allele already in dictionary, add seq
 					if allele_name in seq_dict.keys():
@@ -123,18 +156,35 @@ for file in FILE_NAMES:
 						seq_dict[allele_name] = allele_seq
 						# We then check if it is the first sequence of the file,
 						# hence the reference sequence
-						if len(name_of_ref_seq_in_list) == 0:
-							name_of_ref_seq_in_list.append(allele_name)
+						if len(alignment_ref_seq) == 0:
+							alignment_ref_seq.append(allele_name)
 			line_index += 1
 
-	print "Reference sequence for "+ file +" is "+name_of_ref_seq_in_list[0]
+	alignment_ref_seq = alignment_ref_seq[0]
+	print "Reference sequence for "+ file +" is "+alignment_ref_seq
 
+	if ADD_CHECKS:
+		# Define which allele should be used as reference for defining indels in our matrix
+		str_len = len(genome_ref_seq)
+		for seq in seq_dict.keys():
+			if len(seq) >= str_len and seq[0:str_len] == genome_ref_seq:
+				genome_ref_seq = seq
+				break
+
+		print "Reference sequence for genome GRCh"+ str(COORD_SYST) +" is "+genome_ref_seq
+	
 	# Data curation
 	# We remove positions with unknown nucleotide for a sequence
-	# We also remove indels
+	# We also separate indels positions
 
 	# List of positions kept, 1-based indices
 	pos_list = range(1, len(seq_dict.values()[0])+1)
+
+	# List of positions with indels
+	indel_pos = []
+
+	# List of positions with * symbols
+	stars_pos = []
 
 	# Parse file
 	line_index = 0
@@ -143,46 +193,309 @@ for file in FILE_NAMES:
 		# If * character in a position kept at this stage
 		# It corresponds to an undetermined base in the sequence
 		if ''.join([seq[i-1] for i in pos_list]).count('*') > 0 :
-			# We remove the corresponding positions from the list
-			pos_list = list(set(pos_list) - set([i+1 for i in locations_of_substring(seq, '*')]))
-		# We do the same for the . character
+			# We remove the corresponding positions from the lists
+			new_stars = [i+1 for i in locations_of_substring(seq, '*')]
+			stars_pos = list(set(stars_pos + new_stars))
+			pos_list = list(set(pos_list) - set(new_stars))
+			indel_pos = list(set(indel_pos) - set(stars_pos))
+		# We also check the . character
 		# It corresponds to an indel compared to the reference sequence
 		if ''.join([seq[i-1] for i in pos_list]).count('.') > 0 :
-			pos_list = list(set(pos_list) - set([i+1 for i in locations_of_substring(seq, '.')]))
+			new_indels = [i+1 for i in locations_of_substring(seq, '.')]
+			indel_pos += new_indels
+			indel_pos = list(set(indel_pos) - set(stars_pos))
+			pos_list = list(set(pos_list) - set(new_indels))
 	
 	# Create alignment matrix
-	align_matrix = np.empty([len(seq_dict.values()), len(pos_list)])
+	align_matrix = np.empty([len(seq_dict.values()), len(pos_list)], dtype=object)
 	# Order in which sequences are reported in the matrix
 	ordered_seq_list = []
-	
+
 	# Start at first line of the matrix
 	i = 0
 	if MAT_TYPE : # Fill matrix with 0 or 1
 		for allele_name, allele_seq in seq_dict.iteritems():
 			ordered_seq_list.append(allele_name)
-			if allele_name != name_of_ref_seq_in_list[0]:
-				for j in xrange(len(pos_list)):
+			if allele_name != alignment_ref_seq:
+				len_pos_list = len(pos_list)
+				for j in xrange(len_pos_list):
 					if allele_seq[pos_list[j]-1] == "-":
 						align_matrix[i][j] = 0
 					else:
 						align_matrix[i][j] = 1
 			else:
-				align_matrix[i] = [0]*len(pos_list)
+				align_matrix[i] = [0]*(len(pos_list))
 			i += 1
 
 	else: # Fill matrix with 0, 1, 2 or 3
 		for allele_name, allele_seq in seq_dict.iteritems():
 			ordered_seq_list.append(allele_name)
-			if allele_name != name_of_ref_seq_in_list[0]:
+			if allele_name != alignment_ref_seq:
 				for j in xrange(len(pos_list)):
 					if allele_seq[pos_list[j]-1] == "-":
-						align_matrix[i][j] = nt_to_char[ seq_dict[name_of_ref_seq_in_list[0]][pos_list[j]-1] ]
+						align_matrix[i][j] = nt_to_char[ seq_dict[alignment_ref_seq][pos_list[j]-1] ]
 					else:
 						align_matrix[i][j] = nt_to_char[ allele_seq[pos_list[j]-1] ]
 			else:
 				align_matrix[i] = [nt_to_char[allele_seq[pos_list[k]-1]] for k in xrange(len(pos_list))]
 			i += 1
 
+	# Encode indels
+
+	# Compute stretches positions
+	indel_pos = sorted(indel_pos)
+	insertions_list = []
+	deletions_list = []
+	ref_seq = seq_dict[alignment_ref_seq]
+	ref_seq_indels = [ref_seq[i-1] for i in indel_pos]
+	stretches_list = []
+	
+	# Start the first stretch on first position
+	if ref_seq_indels[0] == ".":
+		# We are looking at an insertion compared to the reference
+		current_stretch = Stretch(True, indel_pos[0])
+	else:
+		# We are looking at a deletion compared to the reference
+		current_stretch = Stretch(False, indel_pos[0])
+	stretches_list.append(current_stretch)
+
+	# Check every indel position
+	for i in xrange(1, len(indel_pos)):
+		if ref_seq_indels[i] == ".":
+			# We are looking at an insertion compared to the reference
+			if ref_seq[indel_pos[i]-2] == ".":
+				# Previous position was already an insertion
+				# We are still in the same stretch, so we shift its end
+				current_stretch.end += 1
+			else:
+				# Previous position was not an insertion
+				# We are starting a stretch
+				current_stretch = Stretch(True, indel_pos[i])
+				stretches_list.append(current_stretch)
+		else:
+			# We are looking at a deletion compared to the reference
+			if indel_pos[i-1] == indel_pos[i]-1 and ref_seq_indels[i-1] != ".":
+				# Previous position was already a deletion
+				# We are still in the same stretch, so we shift its end
+				current_stretch.end += 1
+			else:
+				# Previous position was not a deletion
+				# We are starting a stretch
+				current_stretch = Stretch(False, indel_pos[i])
+				stretches_list.append(current_stretch)
+
+
+	# We now add the deletion positions to a matrix
+	del_pos_list = []
+	for stretch in stretches_list:
+		if not stretch.type_insertion:
+			del_pos_list += stretch.pos()
+	del_align_matrix = np.zeros([len(seq_dict.values()), len(del_pos_list)], dtype=object)
+	
+	# This matrix is filled the next time we iterate over the sequences
+	# And then concatenated to the alignment matrix
+
+	# To know where to store the information on indels
+	# We need to know which strand of DNA the gene is on
+	if COORD_SYST:
+		# Read biological data from ENSEMBL for this given version of GRCh
+		bio_data_file = open(file+".GRCh"+str(COORD_SYST)+".bio", "r")
+		bio_data = [int(i.split()[0]) for i in bio_data_file.readlines()]
+		
+		# Is the gene coding on the direct or reverse strand ?
+		direct_strand = bio_data[0]
+		bio_data = bio_data[1:]
+	else:
+		# By default we assume the gene is on the direct strand
+		# So we encode the indels on the base just before the stretch
+		direct_strand = 1
+
+	if MAT_TYPE : # Fill matrix with 0 and 1
+		for allele_name, allele_seq in seq_dict.iteritems():
+			# Add the information on indels on suitable positions
+			
+			i = ordered_seq_list.index(allele_name)
+			# Store indel position if not found in the kept positions list
+			# In case it belongs to the deletions positions
+			indel_pos_to_check = []
+			for stretch in stretches_list:
+				if stretch.type_insertion:
+					ins_seq = (''.join([allele_seq[m-1] for m in stretch.pos()])).replace('.','')
+					if len(ins_seq) > 0:
+						# There is an insertion on this sequence
+						if direct_strand:
+							# Add information before the stretch
+							ins_pos = stretch.start + 1
+						else:
+							# Add information before the stretch
+							ins_pos = stretch.end - 1
+						try:
+							j = pos_list.index(ins_pos)
+							align_matrix[i][j] = 1
+						except ValueError:
+							if ins_pos in del_pos_list:
+								indel_pos_to_check.append(ins_pos)
+				else:
+					# Fill deletion matrix
+					for j in stretch.pos():
+						seq_base = allele_seq[j-1]
+						if seq_base in ["-", "."] or allele_name == alignment_ref_seq:
+							seq_base = 0
+						else:
+							seq_base = 1
+						del_align_matrix[i][del_pos_list.index(j)] = seq_base
+
+					# Encode deletion
+					del_seq = ''.join([allele_seq[m-1] for m in stretch.pos()])
+					nb_kept = len(del_seq.replace('.','')) # Number of none point characters
+					if nb_kept == 0:
+						# Deletion on full stretch
+						if direct_strand:
+							# Add information before the stretch
+							del_pos = stretch.start + 1
+						else:
+							# Add information before the stretch
+							del_pos = stretch.end - 1
+						try:
+							j = pos_list.index(del_pos)
+							align_matrix[i][j] = 1
+						except ValueError:
+							if del_pos in del_pos_list:
+								indel_pos_to_check.append(del_pos)
+
+					elif nb_kept != len(del_seq):
+						# Stretch in part deleted
+						# Compute positions of substretches (several deletions could be in this stretch)
+						del_base_pos = locations_of_substring(del_seq, '.')
+						local_stretches = []
+						current_substretch = Stretch(False, del_base_pos[0])
+						for k in xrange(1,len(del_base_pos)):
+							if del_base_pos[k]-1 == del_base_pos[k-1]:
+								current_substretch.end += 1
+							else:
+								current_substretch = Stretch(False, del_base_pos[k])
+						# Add the deletion information for each substretch
+						for substretch in local_stretches:
+							if direct_strand:
+								# Add information before the stretch
+								del_pos = substretch.start + 1
+							else:
+								# Add information before the stretch
+								del_pos = substretch.end - 1
+							try:
+								j = pos_list.index(del_pos)
+								align_matrix[i][j] = 1
+							except ValueError:
+								if del_pos in del_pos_list:
+									indel_pos_to_check.append(del_pos)
+
+			# Add indels found on deletions positions
+			for pos in indel_pos_to_check:
+				del_align_matrix[i][del_pos_list.index(pos)] = 1 
+
+
+	else: # Fill matrix with 0, 1, 2 or 3
+		for allele_name, allele_seq in seq_dict.iteritems():
+			# Add the information on indels on suitable positions
+			
+			i = ordered_seq_list.index(allele_name)
+			# Store indel position if not found in the kept positions list
+			# In case it belongs to the deletions positions
+			indel_pos_to_check = defaultdict(str)
+			for stretch in stretches_list:
+				if stretch.type_insertion:
+					ins_seq = (''.join([allele_seq[m-1] for m in stretch.pos()])).replace('.','')
+					len_ins_seq = len(ins_seq)
+					if len_ins_seq > 0:
+						# There is an insertion on this sequence
+						if direct_strand:
+							# Add information before the stretch
+							ins_pos = stretch.start - 1
+						else:
+							# Add information after the stretch on alignement position, so before in genomics position
+							ins_pos = stretch.end + 1
+						print "INS!",allele_name,ins_pos #!!!
+						try:
+							j = pos_list.index(ins_pos)
+							align_matrix[i][j] = str(align_matrix[i][j])+"I"+str(len_ins_seq)
+						except ValueError:
+							if ins_pos in del_pos_list:
+								indel_pos_to_check[ins_pos] += "I"+str(len_ins_seq)
+				else:
+					# Fill deletion matrix
+					for j in stretch.pos():
+						seq_base = allele_seq[j-1]
+						if seq_base in ["-", "."] or allele_name == alignment_ref_seq:
+							seq_base = nt_to_char[ seq_dict[alignment_ref_seq][j-1] ]
+						else:
+							seq_base = nt_to_char[ seq_base ]
+						del_align_matrix[i][del_pos_list.index(j)] = seq_base
+
+					# Encode deletion
+					del_seq = ''.join([allele_seq[m-1] for m in stretch.pos()])
+					nb_kept = len(del_seq.replace('.','')) # Number of none point characters
+					if nb_kept == 0:
+						# Deletion on full stretch
+						if direct_strand:
+							# Add information before the stretch
+							del_pos = stretch.start - 1
+						else:
+							# Add information after the stretch
+							del_pos = stretch.end + 1
+						print "SDEL!",allele_name,del_pos #!!!
+						try:
+							j = pos_list.index(del_pos)
+							align_matrix[i][j] = str(align_matrix[i][j])+"D"+str(len(del_seq)-nb_kept)
+							print "Modif in align" #!!!
+						except ValueError:
+							if del_pos in del_pos_list:
+								print "Modif in del_pos" #!!!
+								indel_pos_to_check[del_pos] += "D"+str(len(del_seq)-nb_kept)
+								print indel_pos_to_check
+
+					elif nb_kept != len(del_seq):
+						# Stretch in part deleted
+						# Compute positions of substretches (several deletions could be in this stretch)
+						del_base_pos = locations_of_substring(del_seq, '.')
+						local_stretches = []
+						current_substretch = Stretch(False, del_base_pos[0])
+						for k in xrange(1,len(del_base_pos)):
+							if del_base_pos[k]-1 == del_base_pos[k-1]:
+								current_substretch.end += 1
+							else:
+								current_substretch = Stretch(False, del_base_pos[k])
+						# Add the deletion information for each substretch
+						for substretch in local_stretches:
+							if direct_strand:
+								# Add information before the stretch
+								del_pos = substretch.start + 1
+							else:
+								# Add information after the stretch on alignement position, so before in genomics position
+								del_pos = substretch.end - 1
+							print "MDEL!",allele_name,del_pos #!!!
+							try:
+								j = pos_list.index(del_pos)
+								align_matrix[i][j] = str(align_matrix[i][j])+"D"+str(len(substretch.pos()))
+							except ValueError:
+								if del_pos in del_pos_list:
+									indel_pos_to_check[del_pos] += "D"+str(len(substretch.pos()))
+
+			# Add indels found on deletions positions
+			for pos in indel_pos_to_check.keys():
+				del_align_matrix[i][del_pos_list.index(pos)] = str(del_align_matrix[i][del_pos_list.index(pos)])+indel_pos_to_check[pos]
+				print allele_name, pos #!!!
+				print del_align_matrix[i][del_pos_list.index(pos)] #!!!
+
+	for stre in stretches_list: #!!!
+		print stre, ''.join([seq_dict[alignment_ref_seq][i-1] for i in stre.pos()]) #!!!
+				
+	align_matrix = np.c_[align_matrix, del_align_matrix]
+	pos_list += del_pos_list
+
+	# Since we added the deletion matrix to the end of the incomplete alignment matrix
+	# Positions are not in increasing order anymore, so we will sort it.
+	align_matrix = np.transpose(np.transpose(align_matrix)[np.argsort(pos_list)])
+	pos_list = np.sort(pos_list)
 
 	# The positions we kept are refering to positions in the alignment and not
 	# positions in the reference sequence. The reference sequence can indeed
@@ -195,7 +508,6 @@ for file in FILE_NAMES:
 	shifts = [0]
 
 	# Find the positions of those shifts
-	ref_seq = seq_dict[name_of_ref_seq_in_list[0]]
 	for i in xrange(len(seq_dict.values()[0])):
 		if ref_seq[i] == ".":
 			shifts.append(i+1)
@@ -213,14 +525,6 @@ for file in FILE_NAMES:
 
 	# If necessary, convert positions to GRCh coordinates
 	if COORD_SYST:
-		# Read biological data from ENSEMBL for this given version of GRCh
-		bio_data_file = open(file+".GRCh"+str(COORD_SYST)+".bio", "r")
-		bio_data = [int(i.split()[0]) for i in bio_data_file.readlines()]
-		
-		# Is the gene coding on the direct or reverse strand ?
-		direct_strand = bio_data[0]
-		bio_data = bio_data[1:]
-
 		base = bio_data[0] # First line correspond to the start position on GRCh
 		
 		# Index used to parse bio_pos, every positive odd line corresponds
@@ -256,11 +560,17 @@ for file in FILE_NAMES:
 			print "Performing additional checks"
 			# Check if the pipes in the reference sequence truly corresponds to the introns
 			# with respect to data provided on ENSEMBL
-			intron_pos_in_file = locations_of_substring(ref_full_seq.replace('.', ''), '|')
+			intron_pos_in_file = locations_of_substring(aln_ref_full_seq.replace('.', ''), '|')
 			for i in xrange(len(intron_pos_in_file)):
 				intron_pos_in_file[i] -= i
 			print "Positions of introns in alignment match positions according to ENSEMBL:"
 			print intron_pos_in_file == [bio_data[2*k+1] for k in xrange((len(bio_data)-1) / 2)]
+			# Check if indels are on the same positions in alignment reference and genome reference
+			for i in xrange(len(seq_dict[alignment_ref_seq])):
+				if seq_dict[alignment_ref_seq][i] == '.' and seq_dict[genome_ref_seq][i] not in ['.', '*']:
+					print "Insertion in genome reference at alignment position " +str(i)+" in file "+file+". Please note that the indels might not be usable in resulting matrix."
+				elif seq_dict[genome_ref_seq][i] == '.' and seq_dict[alignment_ref_seq][i] != '.':
+					print "Deletion in genome reference at alignment position " +str(i)+" in file "+file+". Please note that the indels might not be usable in resulting matrix."
 
 	# Write a pickle file including the computed matrix
 	pickle.dump(align_matrix, open(file+".mat",'wb'))
